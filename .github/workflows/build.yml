@@ -1,4 +1,4 @@
-name: Build iDacsHook
+name: Build iDacsHook (Resolution Fix)
 on: [push, workflow_dispatch]
 
 jobs:
@@ -11,19 +11,25 @@ jobs:
         run: |
           cat > hook.m << 'EOF'
           #import <UIKit/UIKit.h>
-          #include <objc/runtime.h>
 
-          @interface UIWindow (ForcePhone)
+          // 1. 核心逻辑：强制缩小分辨率
+          @interface UIScreen (FixResolution)
           @end
-          @implementation UIWindow (ForcePhone)
-          - (UITraitCollection *)traitCollection {
-              UITraitCollection *orig = [super traitCollection];
-              UITraitCollection *compact = [UITraitCollection traitCollectionWithHorizontalSizeClass:UIUserInterfaceSizeClassCompact];
-              UITraitCollection *phone = [UITraitCollection traitCollectionWithUserInterfaceIdiom:UIUserInterfaceIdiomPhone];
-              return [UITraitCollection traitCollectionWithTraitsFromCollections:@[orig, compact, phone]];
+          @implementation UIScreen (FixResolution)
+          // 逻辑尺寸：决定 App 的内容布局范围（375x667 是经典的 iPhone 比例）
+          - (CGRect)bounds {
+              return CGRectMake(0, 0, 375, 667);
+          }
+          // 物理缩放：2.0 会让内容看起来比 iPad 默认的更“大”且居中，从而解决显示不全
+          - (CGFloat)scale {
+              return 2.0; 
+          }
+          - (CGFloat)nativeScale {
+              return 2.0;
           }
           @end
 
+          // 2. 设备伪装
           @interface UIDevice (ForcePhone)
           @end
           @implementation UIDevice (ForcePhone)
@@ -32,25 +38,28 @@ jobs:
           }
           @end
 
-          @interface UISplitViewController (ForceCollapse)
+          // 3. 强制窗口特征
+          @interface UIWindow (ForceTraits)
           @end
-          @implementation UISplitViewController (ForceCollapse)
-          - (BOOL)isCollapsed { return YES; }
-          - (UISplitViewControllerDisplayMode)displayMode { return UISplitViewControllerDisplayModeSecondaryOnly; }
+          @implementation UIWindow (ForceTraits)
+          - (UITraitCollection *)traitCollection {
+              UITraitCollection *phone = [UITraitCollection traitCollectionWithUserInterfaceIdiom:UIUserInterfaceIdiomPhone];
+              UITraitCollection *compact = [UITraitCollection traitCollectionWithHorizontalSizeClass:UIUserInterfaceSizeClassCompact];
+              return [UITraitCollection traitCollectionWithTraitsFromCollections:@[[super traitCollection], phone, compact]];
+          }
           @end
 
           __attribute__((constructor)) static void init() {
-              NSLog(@"iDacsHook loaded successfully!");
+              NSLog(@"iDacsHook: Resolution Scaling Active (375x667)");
           }
           EOF
 
       - name: Compile and Sign
         run: |
-          # 1. 安装必要的工具
+          # 安装签名工具
           brew install ldid
 
-          # 2. 裸编译 (加上关键的 Rootless 路径标记)
-          # 注意：-install_name 必须指向插件在手机上的最终绝对路径
+          # 编译并指定 install_name (解决白色图标的关键)
           xcrun clang \
             -arch arm64 \
             -arch arm64e \
@@ -61,11 +70,11 @@ jobs:
             -Wl,-install_name,/var/jb/Library/MobileSubstrate/DynamicLibraries/iDacsHook.dylib \
             -o iDacsHook.dylib hook.m
 
-          # 3. 在云端进行伪签名
+          # 云端伪签名
           ldid -S iDacsHook.dylib
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: iDacsHook-Rootless
+          name: iDacsHook-Scaled
           path: iDacsHook.dylib
