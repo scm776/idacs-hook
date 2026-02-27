@@ -33,15 +33,20 @@ jobs:
           @end
           @implementation UISplitViewController (ForceCollapse)
           - (BOOL)isCollapsed { return YES; }
-          - (UISplitViewControllerDisplayMode)displayMode {
-              return UISplitViewControllerDisplayModePrimaryHidden;
-          }
+          - (UISplitViewControllerDisplayMode)displayMode { return UISplitViewControllerDisplayModeSecondaryOnly; }
           @end
 
           __attribute__((constructor)) static void init() {
               NSLog(@"iDacsHook loaded!");
           }
           EOF
+
+          # --- 关键修改：添加编译参数和签名 ---
+          
+          # 1. 安装 ldid (用于签名)
+          brew install ldid
+
+          # 2. 编译并指定 install_name 路径
           xcrun clang \
             -arch arm64 \
             -arch arm64e \
@@ -49,7 +54,12 @@ jobs:
             -dynamiclib \
             -framework UIKit \
             -framework Foundation \
+            -Wl,-install_name,/var/jb/Library/MobileSubstrate/DynamicLibraries/iDacsHook.dylib \
             -o iDacsHook.dylib hook.m
+
+          # 3. 进行伪签名
+          ldid -S iDacsHook.dylib
+
       - uses: actions/upload-artifact@v4
         with:
           name: iDacsHook
