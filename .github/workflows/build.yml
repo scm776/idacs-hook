@@ -1,26 +1,53 @@
-name: iDacsFix
+name: Build
 on: [push, workflow_dispatch]
 jobs:
   build:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Build
-        run: |
-          # 1. 直接生成 hook.m (修正了缺少的声明，防止报错)
-          printf '#import <UIKit/UIKit.h>\n@interface UIWindow (Fix) @end\n@implementation UIWindow (Fix)\n- (void)layoutSubviews {\n[super layoutSubviews];\nself.transform = CGAffineTransformConcat(CGAffineTransformMakeScale(0.8, 0.8), CGAffineTransformMakeTranslation(0, -50));\nself.bounds = CGRectMake(0, 0, 393, 852);\n}\n- (UITraitCollection *)traitCollection {\nreturn [UITraitCollection traitCollectionWithUserInterfaceIdiom:UIUserInterfaceIdiomPhone];\n}\n@end\n@interface UIDevice (Fix) @end\n@implementation UIDevice (Fix)\n- (UIUserInterfaceIdiom)userInterfaceIdiom { return UIUserInterfaceIdiomPhone; }\n@end\n' > hook.m
+      - run: |
+          cat > hook.m << 'EOF'
+          #import <UIKit/UIKit.h>
 
-          # 2. 安装 ldid
-          brew install ldid
+          @interface UIWindow (FinalScaleFix)
+          @end
+          @implementation UIWindow (FinalScaleFix)
+          - (void)layoutSubviews {
+              [super layoutSubviews];
+              CGAffineTransform scale = CGAffineTransformMakeScale(0.85, 0.85);
+              CGAffineTransform moveUp = CGAffineTransformMakeTranslation(0, -40);
+              self.transform = CGAffineTransformConcat(scale, moveUp);
+              self.bounds = CGRectMake(0, 0, 393, 852);
+          }
+          - (UITraitCollection *)traitCollection {
+              UITraitCollection *phone = [UITraitCollection traitCollectionWithUserInterfaceIdiom:UIUserInterfaceIdiomPhone];
+              return [UITraitCollection traitCollectionWithTraitsFromCollections:@[[super traitCollection], phone]];
+          }
+          @end
 
-          # 3. 编译并签名 (增加了具体的路径，确保解决白色图标问题)
-          xcrun clang -arch arm64 -arch arm64e -isysroot $(xcrun --sdk iphoneos --show-sdk-path) -dynamiclib -framework UIKit -framework Foundation -Wl,-install_name,/var/jb/Library/MobileSubstrate/DynamicLibraries/iDacsHook.dylib -o iDacsHook.dylib hook.m
+          @interface UIDevice (Force)
+          @end
+          @implementation UIDevice (Force)
+          - (UIUserInterfaceIdiom)userInterfaceIdiom { return UIUserInterfaceIdiomPhone; }
+          @end
 
-          # 4. 签名
-          ldid -S iDacsHook.dylib
+          __attribute__((constructor)) static void init() {
+              NSLog(@"iDacsHook loaded");
+          }
+          EOF
 
-      - name: Upload
-        uses: actions/upload-artifact@v4
+          xcrun clang \
+            -arch arm64 \
+            -arch arm64e \
+            -isysroot $(xcrun --sdk iphoneos --show-sdk-path) \
+            -dynamiclib \
+            -framework UIKit \
+            -framework Foundation \
+            -o iDacsHook.dylib hook.m
+
+          codesign --remove-signature iDacsHook.dylib || true
+
+      - uses: actions/upload-artifact@v4
         with:
-          name: iDacsHook
+          name: iDacsHook-Fixed
           path: iDacsHook.dylib
