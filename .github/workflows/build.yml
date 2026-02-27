@@ -9,12 +9,28 @@ jobs:
           cat > hook.m << 'EOF'
           #import <UIKit/UIKit.h>
           #include <objc/runtime.h>
+
           static UIUserInterfaceIdiom fake_idiom(id self, SEL _cmd) {
               return UIUserInterfaceIdiomPhone;
           }
+
+          static CGRect fake_bounds(id self, SEL _cmd) {
+              return CGRectMake(0, 0, 393, 852);
+          }
+
+          static CGFloat fake_scale(id self, SEL _cmd) {
+              return 3.0;
+          }
+
           __attribute__((constructor)) static void init() {
               Method m = class_getInstanceMethod([UIDevice class], @selector(userInterfaceIdiom));
               method_setImplementation(m, (IMP)fake_idiom);
+
+              Method b = class_getInstanceMethod([UIScreen class], @selector(bounds));
+              method_setImplementation(b, (IMP)fake_bounds);
+
+              Method s = class_getInstanceMethod([UIScreen class], @selector(scale));
+              method_setImplementation(s, (IMP)fake_scale);
           }
           EOF
           xcrun clang -arch arm64 \
