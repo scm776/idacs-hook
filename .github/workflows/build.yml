@@ -1,4 +1,4 @@
-name: Build iDacsHook (Resolution Fix)
+name: Build iDacsHook (Ultra Resolution Fix)
 on: [push, workflow_dispatch]
 
 jobs:
@@ -12,24 +12,27 @@ jobs:
           cat > hook.m << 'EOF'
           #import <UIKit/UIKit.h>
 
-          // 1. 核心逻辑：强制缩小分辨率
-          @interface UIScreen (FixResolution)
+          // 1. 强制修正窗口布局：解决内容被裁切的关键
+          @interface UIWindow (FinalResolutionFix)
           @end
-          @implementation UIScreen (FixResolution)
-          // 逻辑尺寸：决定 App 的内容布局范围（375x667 是经典的 iPhone 比例）
-          - (CGRect)bounds {
-              return CGRectMake(0, 0, 375, 667);
+          @implementation UIWindow (FinalResolutionFix)
+          - (void)layoutSubviews {
+              [super layoutSubviews];
+              // 强制将 App 限制在 iPhone 15 Pro 的比例 (393x852)
+              CGRect targetFrame = CGRectMake(0, 0, 393, 852);
+              if (!CGRectEqualToRect(self.bounds, targetFrame)) {
+                  self.bounds = targetFrame;
+              }
           }
-          // 物理缩放：2.0 会让内容看起来比 iPad 默认的更“大”且居中，从而解决显示不全
-          - (CGFloat)scale {
-              return 2.0; 
-          }
-          - (CGFloat)nativeScale {
-              return 2.0;
+          // 强制启用 iPhone 窄屏布局模式
+          - (UITraitCollection *)traitCollection {
+              UITraitCollection *phone = [UITraitCollection traitCollectionWithUserInterfaceIdiom:UIUserInterfaceIdiomPhone];
+              UITraitCollection *compact = [UITraitCollection traitCollectionWithHorizontalSizeClass:UIUserInterfaceSizeClassCompact];
+              return [UITraitCollection traitCollectionWithTraitsFromCollections:@[[super traitCollection], phone, compact]];
           }
           @end
 
-          // 2. 设备伪装
+          // 2. 强制设备识别为 iPhone
           @interface UIDevice (ForcePhone)
           @end
           @implementation UIDevice (ForcePhone)
@@ -38,28 +41,33 @@ jobs:
           }
           @end
 
-          // 3. 强制窗口特征
-          @interface UIWindow (ForceTraits)
+          // 3. 修正安全区：防止底部按钮消失
+          @interface UIView (SafeAreaFix)
           @end
-          @implementation UIWindow (ForceTraits)
-          - (UITraitCollection *)traitCollection {
-              UITraitCollection *phone = [UITraitCollection traitCollectionWithUserInterfaceIdiom:UIUserInterfaceIdiomPhone];
-              UITraitCollection *compact = [UITraitCollection traitCollectionWithHorizontalSizeClass:UIUserInterfaceSizeClassCompact];
-              return [UITraitCollection traitCollectionWithTraitsFromCollections:@[[super traitCollection], phone, compact]];
+          @implementation UIView (SafeAreaFix)
+          - (UIEdgeInsets)safeAreaInsets {
+              return UIEdgeInsetsMake(44, 0, 34, 0); 
           }
           @end
 
+          // 4. 强制底层屏幕尺寸报告
+          @interface UIScreen (Fix)
+          @end
+          @implementation UIScreen (Fix)
+          - (CGRect)bounds { return CGRectMake(0, 0, 393, 852); }
+          - (CGFloat)scale { return 3.0; }
+          - (CGFloat)nativeScale { return 3.0; }
+          @end
+
           __attribute__((constructor)) static void init() {
-              NSLog(@"iDacsHook: Resolution Scaling Active (375x667)");
+              NSLog(@"iDacsHook: Ultra Mode Loaded (393x852)");
           }
           EOF
 
       - name: Compile and Sign
         run: |
-          # 安装签名工具
           brew install ldid
-
-          # 编译并指定 install_name (解决白色图标的关键)
+          # 必须包含 -Wl,-install_name 路径，否则图标会变白不生效
           xcrun clang \
             -arch arm64 \
             -arch arm64e \
@@ -70,11 +78,10 @@ jobs:
             -Wl,-install_name,/var/jb/Library/MobileSubstrate/DynamicLibraries/iDacsHook.dylib \
             -o iDacsHook.dylib hook.m
 
-          # 云端伪签名
           ldid -S iDacsHook.dylib
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: iDacsHook-Scaled
+          name: iDacsHook-Ultra
           path: iDacsHook.dylib
