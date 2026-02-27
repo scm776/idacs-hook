@@ -9,65 +9,38 @@ jobs:
 
       - name: Create Hook Source
         run: |
-          cat > hook.m << 'EOF'
-          #import <UIKit/UIKit.h>
-
+          echo '#import <UIKit/UIKit.h>
           @interface UIWindow (FinalScaleFix)
           @end
-
           @implementation UIWindow (FinalScaleFix)
-
-          // 核心控制：每当布局刷新，强行压缩画面内容
           - (void)layoutSubviews {
               [super layoutSubviews];
-              
-              // 1. 强制缩小到 85% (0.85)，并将画面向上拉 40 像素，腾出底部空间
-              // 这解决了之前截图里看到的按钮被切掉的问题
-              CGAffineTransform scale = CGAffineTransformMakeScale(0.85, 0.85);
-              CGAffineTransform moveUp = CGAffineTransformMakeTranslation(0, -40);
-              self.transform = CGAffineTransformConcat(scale, moveUp);
-              
-              // 2. 锁定窗口的基础比例
+              // 强制缩小画面并向上平移，解决按钮被裁切的问题
+              self.transform = CGAffineTransformConcat(CGAffineTransformMakeScale(0.85, 0.85), CGAffineTransformMakeTranslation(0, -40));
               self.bounds = CGRectMake(0, 0, 393, 852); 
           }
-
-          // 强制触发 iPhone 的布局逻辑
           - (UITraitCollection *)traitCollection {
-              UITraitCollection *phone = [UITraitCollection traitCollectionWithUserInterfaceIdiom:UIUserInterfaceIdiomPhone];
-              return [UITraitCollection traitCollectionWithTraitsFromCollections:@[[super traitCollection], phone]];
+              return [UITraitCollection traitCollectionWithUserInterfaceIdiom:UIUserInterfaceIdiomPhone];
           }
           @end
-
-          // 设备伪装逻辑
-          @interface UIDevice (Force)
+          @interface UIDevice (ForcePhone)
           @end
-          @implementation UIDevice (Force)
+          @implementation UIDevice (ForcePhone)
           - (UIUserInterfaceIdiom)userInterfaceIdiom { return UIUserInterfaceIdiomPhone; }
-          @end
-
-          __attribute__((constructor)) static void init() {
-              NSLog(@"iDacsHook: Scale & Translation Mode Loaded");
-          }
-          EOF
+          @end' > hook.m
 
       - name: Compile and Sign
         run: |
           brew install ldid
-          # 编译时注入正确路径，防止图标变白
-          xcrun clang \
-            -arch arm64 \
-            -arch arm64e \
+          xcrun clang -arch arm64 -arch arm64e \
             -isysroot $(xcrun --sdk iphoneos --show-sdk-path) \
-            -dynamiclib \
-            -framework UIKit \
-            -framework Foundation \
+            -dynamiclib -framework UIKit -framework Foundation \
             -Wl,-install_name,/var/jb/Library/MobileSubstrate/DynamicLibraries/iDacsHook.dylib \
             -o iDacsHook.dylib hook.m
-
           ldid -S iDacsHook.dylib
 
-      - name: Upload Tweak
+      - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: iDacsHook-Fixed
+          name: iDacsHook-Final
           path: iDacsHook.dylib
