@@ -1,46 +1,41 @@
-name: Build iDacs-Final-Fix
+name: iDacsFix
 on: [push, workflow_dispatch]
-
 jobs:
   build:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: Create Hook Source
+      - name: Build
         run: |
-          echo '#import <UIKit/UIKit.h>
-          @interface UIWindow (FinalScaleFix)
+          # 1. 写入源码 (使用最稳妥的写入方式)
+          cat << 'EOF' > hook.m
+          #import <UIKit/UIKit.h>
+          @interface UIWindow (Fix)
           @end
-          @implementation UIWindow (FinalScaleFix)
+          @implementation UIWindow (Fix)
           - (void)layoutSubviews {
               [super layoutSubviews];
-              // 强制缩小画面并向上平移，解决按钮被裁切的问题
-              self.transform = CGAffineTransformConcat(CGAffineTransformMakeScale(0.85, 0.85), CGAffineTransformMakeTranslation(0, -40));
-              self.bounds = CGRectMake(0, 0, 393, 852); 
+              CGAffineTransform s = CGAffineTransformMakeScale(0.8, 0.8);
+              CGAffineTransform t = CGAffineTransformMakeTranslation(0, -50);
+              self.transform = CGAffineTransformConcat(s, t);
+              self.bounds = CGRectMake(0, 0, 393, 852);
           }
           - (UITraitCollection *)traitCollection {
               return [UITraitCollection traitCollectionWithUserInterfaceIdiom:UIUserInterfaceIdiomPhone];
           }
           @end
-          @interface UIDevice (ForcePhone)
-          @end
-          @implementation UIDevice (ForcePhone)
+          @implementation UIDevice (Fix)
           - (UIUserInterfaceIdiom)userInterfaceIdiom { return UIUserInterfaceIdiomPhone; }
-          @end' > hook.m
+          @end
+          EOF
 
-      - name: Compile and Sign
-        run: |
+          # 2. 编译并签名 (单行命令，防止换行错误)
           brew install ldid
-          xcrun clang -arch arm64 -arch arm64e \
-            -isysroot $(xcrun --sdk iphoneos --show-sdk-path) \
-            -dynamiclib -framework UIKit -framework Foundation \
-            -Wl,-install_name,/var/jb/Library/MobileSubstrate/DynamicLibraries/iDacsHook.dylib \
-            -o iDacsHook.dylib hook.m
+          xcrun clang -arch arm64 -arch arm64e -isysroot $(xcrun --sdk iphoneos --show-sdk-path) -dynamiclib -framework UIKit -framework Foundation -Wl,-install_name,/var/jb/Library/MobileSubstrate/DynamicLibraries/iDacsHook.dylib -o iDacsHook.dylib hook.m
           ldid -S iDacsHook.dylib
 
-      - name: Upload Artifact
+      - name: Upload
         uses: actions/upload-artifact@v4
         with:
-          name: iDacsHook-Final
+          name: iDacsHook
           path: iDacsHook.dylib
