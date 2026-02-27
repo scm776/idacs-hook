@@ -1,4 +1,4 @@
-name: Build iDacsHook
+name: Build iDacs-Final-Fix
 on: [push, workflow_dispatch]
 
 jobs:
@@ -7,44 +7,53 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Compile Tweak
+      - name: Create Hook Source
         run: |
-          # 1. 写入 Hook 代码
           cat > hook.m << 'EOF'
           #import <UIKit/UIKit.h>
 
-          @interface UIWindow (Fix)
+          @interface UIWindow (FinalScaleFix)
           @end
-          @implementation UIWindow (Fix)
+
+          @implementation UIWindow (FinalScaleFix)
+
+          // 核心控制：每当布局刷新，强行压缩画面内容
           - (void)layoutSubviews {
               [super layoutSubviews];
-              self.bounds = CGRectMake(0, 0, 393, 852);
+              
+              // 1. 强制缩小到 85% (0.85)，并将画面向上拉 40 像素，腾出底部空间
+              // 这解决了之前截图里看到的按钮被切掉的问题
+              CGAffineTransform scale = CGAffineTransformMakeScale(0.85, 0.85);
+              CGAffineTransform moveUp = CGAffineTransformMakeTranslation(0, -40);
+              self.transform = CGAffineTransformConcat(scale, moveUp);
+              
+              // 2. 锁定窗口的基础比例
+              self.bounds = CGRectMake(0, 0, 393, 852); 
           }
+
+          // 强制触发 iPhone 的布局逻辑
           - (UITraitCollection *)traitCollection {
               UITraitCollection *phone = [UITraitCollection traitCollectionWithUserInterfaceIdiom:UIUserInterfaceIdiomPhone];
-              UITraitCollection *compact = [UITraitCollection traitCollectionWithHorizontalSizeClass:UIUserInterfaceSizeClassCompact];
-              return [UITraitCollection traitCollectionWithTraitsFromCollections:@[[super traitCollection], phone, compact]];
+              return [UITraitCollection traitCollectionWithTraitsFromCollections:@[[super traitCollection], phone]];
           }
           @end
 
-          @interface UIScreen (Fix)
+          // 设备伪装逻辑
+          @interface UIDevice (Force)
           @end
-          @implementation UIScreen (Fix)
-          - (CGRect)bounds { return CGRectMake(0, 0, 393, 852); }
-          - (CGFloat)scale { return 3.0; }
-          @end
-
-          @interface UIDevice (Fix)
-          @end
-          @implementation UIDevice (Fix)
+          @implementation UIDevice (Force)
           - (UIUserInterfaceIdiom)userInterfaceIdiom { return UIUserInterfaceIdiomPhone; }
           @end
+
+          __attribute__((constructor)) static void init() {
+              NSLog(@"iDacsHook: Scale & Translation Mode Loaded");
+          }
           EOF
 
-          # 2. 安装 ldid
+      - name: Compile and Sign
+        run: |
           brew install ldid
-
-          # 3. 编译：注意这一行必须完全一致，解决了白色图标问题
+          # 编译时注入正确路径，防止图标变白
           xcrun clang \
             -arch arm64 \
             -arch arm64e \
@@ -55,11 +64,10 @@ jobs:
             -Wl,-install_name,/var/jb/Library/MobileSubstrate/DynamicLibraries/iDacsHook.dylib \
             -o iDacsHook.dylib hook.m
 
-          # 4. 签名
           ldid -S iDacsHook.dylib
 
-      - name: Upload
+      - name: Upload Tweak
         uses: actions/upload-artifact@v4
         with:
-          name: iDacsHook
+          name: iDacsHook-Fixed
           path: iDacsHook.dylib
