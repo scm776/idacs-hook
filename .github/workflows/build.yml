@@ -1,0 +1,27 @@
+name: Build
+on: [push]
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          cat > hook.m << 'EOF'
+          #import <UIKit/UIKit.h>
+          #include <objc/runtime.h>
+          static UIUserInterfaceIdiom fake_idiom(id self, SEL _cmd) {
+              return UIUserInterfaceIdiomPhone;
+          }
+          __attribute__((constructor)) static void init() {
+              Method m = class_getInstanceMethod([UIDevice class], @selector(userInterfaceIdiom));
+              method_setImplementation(m, (IMP)fake_idiom);
+          }
+          EOF
+          xcrun clang -arch arm64 \
+            -isysroot $(xcrun --sdk iphoneos --show-sdk-path) \
+            -dynamiclib -framework UIKit -framework Foundation \
+            -o iDacsHook.dylib hook.m
+      - uses: actions/upload-artifact@v4
+        with:
+          name: iDacsHook
+          path: iDacsHook.dylib
