@@ -7,31 +7,16 @@ jobs:
       - uses: actions/checkout@v4
       - name: Build
         run: |
-          # 1. 写入源码 (使用最稳妥的写入方式)
-          cat << 'EOF' > hook.m
-          #import <UIKit/UIKit.h>
-          @interface UIWindow (Fix)
-          @end
-          @implementation UIWindow (Fix)
-          - (void)layoutSubviews {
-              [super layoutSubviews];
-              CGAffineTransform s = CGAffineTransformMakeScale(0.8, 0.8);
-              CGAffineTransform t = CGAffineTransformMakeTranslation(0, -50);
-              self.transform = CGAffineTransformConcat(s, t);
-              self.bounds = CGRectMake(0, 0, 393, 852);
-          }
-          - (UITraitCollection *)traitCollection {
-              return [UITraitCollection traitCollectionWithUserInterfaceIdiom:UIUserInterfaceIdiomPhone];
-          }
-          @end
-          @implementation UIDevice (Fix)
-          - (UIUserInterfaceIdiom)userInterfaceIdiom { return UIUserInterfaceIdiomPhone; }
-          @end
-          EOF
+          # 1. 直接生成 hook.m (修正了缺少的声明，防止报错)
+          printf '#import <UIKit/UIKit.h>\n@interface UIWindow (Fix) @end\n@implementation UIWindow (Fix)\n- (void)layoutSubviews {\n[super layoutSubviews];\nself.transform = CGAffineTransformConcat(CGAffineTransformMakeScale(0.8, 0.8), CGAffineTransformMakeTranslation(0, -50));\nself.bounds = CGRectMake(0, 0, 393, 852);\n}\n- (UITraitCollection *)traitCollection {\nreturn [UITraitCollection traitCollectionWithUserInterfaceIdiom:UIUserInterfaceIdiomPhone];\n}\n@end\n@interface UIDevice (Fix) @end\n@implementation UIDevice (Fix)\n- (UIUserInterfaceIdiom)userInterfaceIdiom { return UIUserInterfaceIdiomPhone; }\n@end\n' > hook.m
 
-          # 2. 编译并签名 (单行命令，防止换行错误)
+          # 2. 安装 ldid
           brew install ldid
+
+          # 3. 编译并签名 (增加了具体的路径，确保解决白色图标问题)
           xcrun clang -arch arm64 -arch arm64e -isysroot $(xcrun --sdk iphoneos --show-sdk-path) -dynamiclib -framework UIKit -framework Foundation -Wl,-install_name,/var/jb/Library/MobileSubstrate/DynamicLibraries/iDacsHook.dylib -o iDacsHook.dylib hook.m
+
+          # 4. 签名
           ldid -S iDacsHook.dylib
 
       - name: Upload
