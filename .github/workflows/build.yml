@@ -1,4 +1,4 @@
-name: Build iDacsHook (Ultra Resolution Fix)
+name: Build iDacsHook
 on: [push, workflow_dispatch]
 
 jobs:
@@ -7,24 +7,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Prepare Source Code
+      - name: Compile Tweak
         run: |
+          # 1. 写入 Hook 代码
           cat > hook.m << 'EOF'
           #import <UIKit/UIKit.h>
 
-          // 1. 强制修正窗口布局：解决内容被裁切的关键
-          @interface UIWindow (FinalResolutionFix)
+          @interface UIWindow (Fix)
           @end
-          @implementation UIWindow (FinalResolutionFix)
+          @implementation UIWindow (Fix)
           - (void)layoutSubviews {
               [super layoutSubviews];
-              // 强制将 App 限制在 iPhone 15 Pro 的比例 (393x852)
-              CGRect targetFrame = CGRectMake(0, 0, 393, 852);
-              if (!CGRectEqualToRect(self.bounds, targetFrame)) {
-                  self.bounds = targetFrame;
-              }
+              self.bounds = CGRectMake(0, 0, 393, 852);
           }
-          // 强制启用 iPhone 窄屏布局模式
           - (UITraitCollection *)traitCollection {
               UITraitCollection *phone = [UITraitCollection traitCollectionWithUserInterfaceIdiom:UIUserInterfaceIdiomPhone];
               UITraitCollection *compact = [UITraitCollection traitCollectionWithHorizontalSizeClass:UIUserInterfaceSizeClassCompact];
@@ -32,42 +27,24 @@ jobs:
           }
           @end
 
-          // 2. 强制设备识别为 iPhone
-          @interface UIDevice (ForcePhone)
-          @end
-          @implementation UIDevice (ForcePhone)
-          - (UIUserInterfaceIdiom)userInterfaceIdiom {
-              return UIUserInterfaceIdiomPhone;
-          }
-          @end
-
-          // 3. 修正安全区：防止底部按钮消失
-          @interface UIView (SafeAreaFix)
-          @end
-          @implementation UIView (SafeAreaFix)
-          - (UIEdgeInsets)safeAreaInsets {
-              return UIEdgeInsetsMake(44, 0, 34, 0); 
-          }
-          @end
-
-          // 4. 强制底层屏幕尺寸报告
           @interface UIScreen (Fix)
           @end
           @implementation UIScreen (Fix)
           - (CGRect)bounds { return CGRectMake(0, 0, 393, 852); }
           - (CGFloat)scale { return 3.0; }
-          - (CGFloat)nativeScale { return 3.0; }
           @end
 
-          __attribute__((constructor)) static void init() {
-              NSLog(@"iDacsHook: Ultra Mode Loaded (393x852)");
-          }
+          @interface UIDevice (Fix)
+          @end
+          @implementation UIDevice (Fix)
+          - (UIUserInterfaceIdiom)userInterfaceIdiom { return UIUserInterfaceIdiomPhone; }
+          @end
           EOF
 
-      - name: Compile and Sign
-        run: |
+          # 2. 安装 ldid
           brew install ldid
-          # 必须包含 -Wl,-install_name 路径，否则图标会变白不生效
+
+          # 3. 编译：注意这一行必须完全一致，解决了白色图标问题
           xcrun clang \
             -arch arm64 \
             -arch arm64e \
@@ -78,10 +55,11 @@ jobs:
             -Wl,-install_name,/var/jb/Library/MobileSubstrate/DynamicLibraries/iDacsHook.dylib \
             -o iDacsHook.dylib hook.m
 
+          # 4. 签名
           ldid -S iDacsHook.dylib
 
-      - name: Upload Artifact
+      - name: Upload
         uses: actions/upload-artifact@v4
         with:
-          name: iDacsHook-Ultra
+          name: iDacsHook
           path: iDacsHook.dylib
