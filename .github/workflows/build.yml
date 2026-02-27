@@ -10,31 +10,36 @@ jobs:
           #import <UIKit/UIKit.h>
           #include <objc/runtime.h>
 
-          static UIUserInterfaceIdiom fake_idiom(id self, SEL _cmd) {
+          @interface UIWindow (ForcePhone)
+          @end
+          @implementation UIWindow (ForcePhone)
+          - (UITraitCollection *)traitCollection {
+              UITraitCollection *orig = [super traitCollection];
+              UITraitCollection *compact = [UITraitCollection traitCollectionWithHorizontalSizeClass:UIUserInterfaceSizeClassCompact];
+              UITraitCollection *phone = [UITraitCollection traitCollectionWithUserInterfaceIdiom:UIUserInterfaceIdiomPhone];
+              return [UITraitCollection traitCollectionWithTraitsFromCollections:@[orig, compact, phone]];
+          }
+          @end
+
+          @interface UIDevice (ForcePhone)
+          @end
+          @implementation UIDevice (ForcePhone)
+          - (UIUserInterfaceIdiom)userInterfaceIdiom {
               return UIUserInterfaceIdiomPhone;
           }
+          @end
 
-          static UIUserInterfaceSizeClass fake_size_class(id self, SEL _cmd) {
-              return UIUserInterfaceSizeClassCompact;
+          @interface UISplitViewController (ForceCollapse)
+          @end
+          @implementation UISplitViewController (ForceCollapse)
+          - (BOOL)isCollapsed { return YES; }
+          - (UISplitViewControllerDisplayMode)displayMode {
+              return UISplitViewControllerDisplayModePrimaryHidden;
           }
-
-          static BOOL fake_collapsed(id self, SEL _cmd) {
-              return YES;
-          }
+          @end
 
           __attribute__((constructor)) static void init() {
-              Method m1 = class_getInstanceMethod([UIDevice class], @selector(userInterfaceIdiom));
-              method_setImplementation(m1, (IMP)fake_idiom);
-
-              Method m2 = class_getInstanceMethod([UITraitCollection class], @selector(userInterfaceIdiom));
-              method_setImplementation(m2, (IMP)fake_idiom);
-
-              Method m3 = class_getInstanceMethod([UITraitCollection class], @selector(horizontalSizeClass));
-              method_setImplementation(m3, (IMP)fake_size_class);
-
-              // 强制 SplitView 折叠
-              Method m4 = class_getInstanceMethod([UISplitViewController class], @selector(isCollapsed));
-              if (m4) method_setImplementation(m4, (IMP)fake_collapsed);
+              NSLog(@"iDacsHook loaded!");
           }
           EOF
           xcrun clang -arch arm64 \
