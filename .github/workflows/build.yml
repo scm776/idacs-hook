@@ -8,27 +8,20 @@ jobs:
       - run: |
           cat > hook.m << 'EOF'
           #import <UIKit/UIKit.h>
-
-          @interface UIWindow (FinalScaleFix)
-          @end
-          @implementation UIWindow (FinalScaleFix)
-          - (void)layoutSubviews {
-              [super layoutSubviews];
-              CGAffineTransform scale = CGAffineTransformMakeScale(0.85, 0.85);
-              CGAffineTransform moveUp = CGAffineTransformMakeTranslation(0, -40);
-              self.transform = CGAffineTransformConcat(scale, moveUp);
-              self.bounds = CGRectMake(0, 0, 393, 852);
-          }
-          - (UITraitCollection *)traitCollection {
-              UITraitCollection *phone = [UITraitCollection traitCollectionWithUserInterfaceIdiom:UIUserInterfaceIdiomPhone];
-              return [UITraitCollection traitCollectionWithTraitsFromCollections:@[[super traitCollection], phone]];
-          }
-          @end
+          #include <objc/runtime.h>
 
           @interface UIDevice (Force)
           @end
           @implementation UIDevice (Force)
-          - (UIUserInterfaceIdiom)userInterfaceIdiom { return UIUserInterfaceIdiomPhone; }
+          - (UIUserInterfaceIdiom)userInterfaceIdiom {
+              return UIUserInterfaceIdiomPhone;
+          }
+          @end
+
+          @interface UISplitViewController (Force)
+          @end
+          @implementation UISplitViewController (Force)
+          - (BOOL)isCollapsed { return YES; }
           @end
 
           __attribute__((constructor)) static void init() {
@@ -43,6 +36,7 @@ jobs:
             -dynamiclib \
             -framework UIKit \
             -framework Foundation \
+            -Wno-deprecated-declarations \
             -o iDacsHook.dylib hook.m
 
           codesign --remove-signature iDacsHook.dylib || true
