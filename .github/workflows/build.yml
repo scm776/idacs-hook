@@ -1,11 +1,14 @@
-name: Build
-on: [push]
+name: Build iDacsHook
+on: [push, workflow_dispatch]
+
 jobs:
   build:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
-      - run: |
+
+      - name: Prepare Source Code
+        run: |
           cat > hook.m << 'EOF'
           #import <UIKit/UIKit.h>
           #include <objc/runtime.h>
@@ -37,16 +40,17 @@ jobs:
           @end
 
           __attribute__((constructor)) static void init() {
-              NSLog(@"iDacsHook loaded!");
+              NSLog(@"iDacsHook loaded successfully!");
           }
           EOF
 
-          # --- 关键修改：添加编译参数和签名 ---
-          
-          # 1. 安装 ldid (用于签名)
+      - name: Compile and Sign
+        run: |
+          # 1. 安装必要的工具
           brew install ldid
 
-          # 2. 编译并指定 install_name 路径
+          # 2. 裸编译 (加上关键的 Rootless 路径标记)
+          # 注意：-install_name 必须指向插件在手机上的最终绝对路径
           xcrun clang \
             -arch arm64 \
             -arch arm64e \
@@ -57,10 +61,11 @@ jobs:
             -Wl,-install_name,/var/jb/Library/MobileSubstrate/DynamicLibraries/iDacsHook.dylib \
             -o iDacsHook.dylib hook.m
 
-          # 3. 进行伪签名
+          # 3. 在云端进行伪签名
           ldid -S iDacsHook.dylib
 
-      - uses: actions/upload-artifact@v4
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
         with:
-          name: iDacsHook
+          name: iDacsHook-Rootless
           path: iDacsHook.dylib
