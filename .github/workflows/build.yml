@@ -42,9 +42,13 @@ jobs:
               NSLog(@"iDacsHook loaded!");
           }
           EOF
+          xcrun clang \
+            -arch arm64 \
+            -arch arm64e \
             -isysroot $(xcrun --sdk iphoneos --show-sdk-path) \
-            -dynamiclib -framework UIKit -framework Foundation \
-            -arch arm64 -arch arm64e \
+            -dynamiclib \
+            -framework UIKit \
+            -framework Foundation \
             -o iDacsHook.dylib hook.m
       - uses: actions/upload-artifact@v4
         with:
