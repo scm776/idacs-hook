@@ -18,8 +18,8 @@ jobs:
               return UIUserInterfaceSizeClassCompact;
           }
 
-          static CGRect fake_bounds(id self, SEL _cmd) {
-              return CGRectMake(0, 0, 393, 852);
+          static BOOL fake_collapsed(id self, SEL _cmd) {
+              return YES;
           }
 
           __attribute__((constructor)) static void init() {
@@ -32,11 +32,9 @@ jobs:
               Method m3 = class_getInstanceMethod([UITraitCollection class], @selector(horizontalSizeClass));
               method_setImplementation(m3, (IMP)fake_size_class);
 
-              Method m4 = class_getInstanceMethod([UITraitCollection class], @selector(verticalSizeClass));
-              method_setImplementation(m4, (IMP)fake_size_class);
-
-              Method m5 = class_getInstanceMethod([UIScreen class], @selector(bounds));
-              method_setImplementation(m5, (IMP)fake_bounds);
+              // 强制 SplitView 折叠
+              Method m4 = class_getInstanceMethod([UISplitViewController class], @selector(isCollapsed));
+              if (m4) method_setImplementation(m4, (IMP)fake_collapsed);
           }
           EOF
           xcrun clang -arch arm64 \
